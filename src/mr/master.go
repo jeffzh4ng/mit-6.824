@@ -27,7 +27,7 @@ func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (m *Master) MapTask(args *MapTaskArgs, reply *MapTaskReply) error {
-	reply.Filename = "pg-huckleberry.txt"
+	reply.Filename = "pg-huckleberry_finn.txt"
 	return nil
 }
 
