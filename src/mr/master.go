@@ -6,31 +6,80 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
+	"time"
 )
 
-
 type Master struct {
-	// Your definitions here.
+	workQueue WorkQueue // TODO: do we need to capitalize and export?
+}
 
+type WorkQueue struct {
+	mu sync.Mutex
+	queue map[string]bool
 }
 
 // Your code here -- RPC handlers for the worker to call.
-
-//
-// an example RPC handler.
-//
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (m *Master) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+
+func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *UpdateMapTaskToFinishReply) error {
+	m.workQueue.mu.Lock()
+		delete(m.workQueue.queue, args.Filename)
+	m.workQueue.mu.Unlock()
+
 	return nil
 }
 
-func (m *Master) MapTask(args *MapTaskArgs, reply *MapTaskReply) error {
-	reply.Filename = "pg-huckleberry_finn.txt"
+func (m *Master) GetAvailableFilename(args *GetAvailableFilenameArgs, reply *GetAvailableFilenameReply) error {
+	m.workQueue.mu.Lock()
+		availableFileName := getNextAvailableFile(m.workQueue)
+		m.workQueue.queue[availableFileName] = true
+	m.workQueue.mu.Unlock()
+
+	// defer monitorFile(m.workQueue, availableFileName)
+
+	reply.Filename = availableFileName
 	return nil
 }
 
+func getNextAvailableFile(workQueue WorkQueue) string {
+	// find next key in the workqueue such that workQueue[key] is false (not busy)
+	
+	// assumes calling function has ownership of the Mutex<WorkQueue> and does not lock anything
+	availableFilename := ""
+
+	for filename, busy := range workQueue.queue {
+		if busy == false {
+			availableFilename = filename
+			break
+		}
+	}
+
+	// TODO: if availableFilename == "", ===> no available file
+	// 									 ===> AcceptMapTask (parent fn) was called when there is no work to be done
+
+	return availableFilename
+}
+
+func monitorFile(workQueue WorkQueue, filename string) {
+	tenSeconds := time.Millisecond * 1000 * 10
+	time.Sleep(tenSeconds)
+
+	workQueue.mu.Lock()
+		busy, ok := workQueue.queue[filename]
+		if ok {
+			if busy {
+				// mf crashed yo
+				workQueue.queue[filename] = false // set busy status to false so another worker can pick up this work
+			} else {
+				// its all good, busy is false so another worker can take this file
+			}
+		} else {
+			// its all good, the filename is off the workqueue which means the work has been done
+		}
+	workQueue.mu.Unlock()
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -55,7 +104,11 @@ func (m *Master) server() {
 func (m *Master) Done() bool {
 	ret := false
 
-	// Your code here.
+	// fileMap.lock()
+	// defer fileMap.unlock()
+
+	// return workQueue.length() === 0
+
 
 
 	return ret
@@ -67,10 +120,19 @@ func (m *Master) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeMaster(files []string, nReduce int) *Master {
-	m := Master{}
+	m := Master{
+		workQueue: WorkQueue{
+			mu: sync.Mutex{},
+			queue: make(map[string]bool),
+		},
+	}
 
-	// Your code here.
-
+	m.workQueue.mu.Lock()
+	for i := 0; i < len(files); i++ {
+		filename := files[i]
+		m.workQueue.queue[filename] = false
+	}
+	m.workQueue.mu.Unlock()
 
 	m.server()
 	return &m

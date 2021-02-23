@@ -45,8 +45,6 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	// Your worker implementation here.
 
-	// uncomment to send the Example RPC to the master.
-	// CallExample()
 
 	// map task
 	// =============================================
@@ -101,10 +99,11 @@ func Worker(mapf func(string, string) []KeyValue,
 }
 
 func GetAvailableFilename() string {
-	args := MapTaskArgs {}
-	reply := MapTaskReply {}
+	args := GetAvailableFilenameArgs {}
+	reply := GetAvailableFilenameReply {}
 
-	call("Master.MapTask", &args, &reply)
+	call("Master.GetAvailableFilename", &args, &reply)
+	fmt.Println(reply.Filename)
 
 	return reply.Filename
 }
