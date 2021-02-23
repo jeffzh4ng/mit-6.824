@@ -37,7 +37,7 @@ func (m *Master) GetAvailableFilename(args *GetAvailableFilenameArgs, reply *Get
 		m.workQueue.queue[availableFileName] = true
 	m.workQueue.mu.Unlock()
 
-	// defer monitorFile(m.workQueue, availableFileName)
+	go monitorFile(m.workQueue, availableFileName)
 
 	reply.Filename = availableFileName
 	return nil
