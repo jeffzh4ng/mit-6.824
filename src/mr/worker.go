@@ -50,7 +50,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-	fmt.Println("hello")
 	go mapTask(mapf, &wg)
 	go reduceTask(reducef)
 
@@ -60,10 +59,9 @@ func Worker(mapf func(string, string) []KeyValue,
 func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	fmt.Println("world")
+	fmt.Println("running map task")
 	fileNameForMapTask := GetAvailableFilenameForMapTask()
 	NReduce := GetNumberOfReduceTasks()
-	fmt.Println("%v", fileNameForMapTask)
 
 	for fileNameForMapTask != "" {
 		// intermediate := []KeyValue{}
@@ -83,23 +81,37 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 		for i := 0; i < len(kva); i++ {
 			reduceTaskNumber := ihash(kva[i].Key) % NReduce
 			oname := "mr-" /* + string(mapTaskNumber)*/ + strconv.Itoa(reduceTaskNumber)
+			
+			// TODO: use temp files
+			
+			var ofile *os.File
+			
+    		_, fileError := os.Stat(oname)
+    		if os.IsNotExist(fileError) {
+				ofile, _ = os.Create(oname)
+			} else {
+				ofile, err = os.OpenFile(oname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
+				
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
 
-			ofile, _ := os.Create(oname)
-			defer ofile.Close()
-
+			fmt.Println("placing in", oname, kva[i])
 			enc := json.NewEncoder(ofile)
-			err := enc.Encode(&kva[i])
-
-			if err != nil {
+			encodeError := enc.Encode(&kva[i])
+			ofile.Close()
+			
+			if encodeError != nil {
 				// TODO: throw?
+				fmt.Println(encodeError)
 			}
 		}
 
+		fmt.Println("done")
+		break
+
 		// TODO: MARK JOB AS DONE
-
-
-		// split the intemediary file into numReduceTasks parts
-		// how do we split it into 10 parts?
 	}
 }
 
