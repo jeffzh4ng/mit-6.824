@@ -59,12 +59,11 @@ func Worker(mapf func(string, string) []KeyValue,
 func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	fmt.Println("running map task")
 	fileNameForMapTask := GetAvailableFilenameForMapTask()
 	NReduce := GetNumberOfReduceTasks()
 
 	for fileNameForMapTask != "" {
-		// intermediate := []KeyValue{}
+		fmt.Println("processing", fileNameForMapTask)
 
 		file, err := os.Open(fileNameForMapTask)
 		if err != nil {
@@ -97,7 +96,6 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 				}
 			}
 
-			fmt.Println("placing in", oname, kva[i])
 			enc := json.NewEncoder(ofile)
 			encodeError := enc.Encode(&kva[i])
 			ofile.Close()
@@ -108,10 +106,8 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 			}
 		}
 
-		fmt.Println("done")
-		break
-
-		// TODO: MARK JOB AS DONE
+		UpdateMapTaskToFinish(fileNameForMapTask)
+		fileNameForMapTask = GetAvailableFilenameForMapTask()
 	}
 }
 
@@ -149,12 +145,20 @@ func reduceTask(reducef func(string, []string) string) {
 	// }
 }
 
+func UpdateMapTaskToFinish(filename string) {
+	args := UpdateMapTaskToFinishArgs {
+		Filename: filename,
+	}
+	reply := UpdateMapTaskToFinishReply {}
+
+	call("Master.UpdateMapTaskToFinish", &args, &reply)
+}
+
 func GetAvailableFilenameForMapTask() string {
 	args := GetAvailableMapInputArgs {}
 	reply := GetAvailableMapInputReply {}
 
 	call("Master.GetAvailableMapInput", &args, &reply)
-	fmt.Println(reply.Filename)
 
 	return reply.Filename
 }

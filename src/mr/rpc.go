@@ -17,6 +17,7 @@ type UpdateMapTaskToFinishArgs struct {
 }
 
 type UpdateMapTaskToFinishReply struct {
+	
 }
 
 type GetAvailableMapInputArgs struct {
