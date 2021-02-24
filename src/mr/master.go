@@ -11,6 +11,7 @@ import (
 )
 
 type Master struct {
+	numberOfReduceTasks int
 	workQueue WorkQueue // TODO: do we need to capitalize and export?
 }
 
@@ -31,7 +32,12 @@ func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *U
 	return nil
 }
 
-func (m *Master) GetAvailableFilename(args *GetAvailableFilenameArgs, reply *GetAvailableFilenameReply) error {
+func (m *Master) GetNumberOfReduceTasks(args *GetNumberOfReduceTasksArgs, reply *GetNumberOfReduceTasksReply) error {
+	reply.NumberOfReduceTasks = m.numberOfReduceTasks
+	return nil
+}
+
+func (m *Master) GetAvailableMapInput(args *GetAvailableMapInputArgs, reply *GetAvailableMapInputReply) error {
 	m.workQueue.mu.Lock()
 		availableFileName := getNextAvailableFile(m.workQueue)
 		m.workQueue.queue[availableFileName] = true
@@ -55,9 +61,6 @@ func getNextAvailableFile(workQueue WorkQueue) string {
 			break
 		}
 	}
-
-	// TODO: if availableFilename == "", ===> no available file
-	// 									 ===> AcceptMapTask (parent fn) was called when there is no work to be done
 
 	return availableFilename
 }
@@ -121,6 +124,7 @@ func (m *Master) Done() bool {
 //
 func MakeMaster(files []string, nReduce int) *Master {
 	m := Master{
+		numberOfReduceTasks: nReduce,
 		workQueue: WorkQueue{
 			mu: sync.Mutex{},
 			queue: make(map[string]bool),

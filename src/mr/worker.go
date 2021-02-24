@@ -1,13 +1,15 @@
 package mr
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net/rpc"
 	"os"
-	"sort"
+	"strconv"
+	"sync"
 )
 
 //
@@ -45,67 +47,113 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	// Your worker implementation here.
 
+	var wg sync.WaitGroup
 
-	// map task
-	// =============================================
-	// 1. send a RPC to master asking for a map task
-	// read each input file,
-	// pass it to Map,
-	// accumulate the intermediate Map output.
-	intermediate := []KeyValue{}
+	wg.Add(1)
+	fmt.Println("hello")
+	go mapTask(mapf, &wg)
+	go reduceTask(reducef)
 
-	filename := GetAvailableFilename()
+	wg.Wait()
+}
 
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot open %v", filename)
-	}
-	content, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Fatalf("cannot read %v", filename)
-	}
-	file.Close()
-	kva := mapf(filename, string(content))
-	intermediate = append(intermediate, kva...)
+func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	// reduce task
-	// ============================================
-	sort.Sort(ByKey(intermediate))
+	fmt.Println("world")
+	fileNameForMapTask := GetAvailableFilenameForMapTask()
+	NReduce := GetNumberOfReduceTasks()
+	fmt.Println("%v", fileNameForMapTask)
 
-	oname := "mr-out-0"
-	ofile, _ := os.Create(oname)
+	for fileNameForMapTask != "" {
+		// intermediate := []KeyValue{}
 
-	//
-	// call Reduce on each distinct key in intermediate[],
-	// and print the result to mr-out-0.
-	//
-	i := 0
-	for i < len(intermediate) {
-		j := i + 1
-		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
-			j++
+		file, err := os.Open(fileNameForMapTask)
+		if err != nil {
+			log.Fatalf("cannot open %v", fileNameForMapTask)
 		}
-		values := []string{}
-		for k := i; k < j; k++ {
-			values = append(values, intermediate[k].Value)
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", fileNameForMapTask)
 		}
-		output := reducef(intermediate[i].Key, values)
+		file.Close()
 
-		// this is the correct format for each line of Reduce output.
-		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+		kva := mapf(fileNameForMapTask, string(content))
 
-		i = j
+		for i := 0; i < len(kva); i++ {
+			reduceTaskNumber := ihash(kva[i].Key) % NReduce
+			oname := "mr-" /* + string(mapTaskNumber)*/ + strconv.Itoa(reduceTaskNumber)
+
+			ofile, _ := os.Create(oname)
+			defer ofile.Close()
+
+			enc := json.NewEncoder(ofile)
+			err := enc.Encode(&kva[i])
+
+			if err != nil {
+				// TODO: throw?
+			}
+		}
+
+		// TODO: MARK JOB AS DONE
+
+
+		// split the intemediary file into numReduceTasks parts
+		// how do we split it into 10 parts?
 	}
 }
 
-func GetAvailableFilename() string {
-	args := GetAvailableFilenameArgs {}
-	reply := GetAvailableFilenameReply {}
+func reduceTask(reducef func(string, []string) string) {
+	// availableIntermediateFilesToReduce := RPCCallToMaster()
+	
+	// while availableIntermediateFilesToReduce {
+		// intermediate := thing we need from fs
 
-	call("Master.GetAvailableFilename", &args, &reply)
+		// oname := "mr-0-0"
+		// ofile, _ := os.Create(oname)
+		// fmt.Fprintf(ofile, "%v", intermediate)
+
+		//
+		// call Reduce on each distinct key in intermediate[],
+		// and print the result to mr-out-0.
+		//
+		// i := 0
+		// for i < len(intermediate) {
+		// 	j := i + 1
+		// 	for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+		// 		j++
+		// 	}
+		// 	values := []string{}
+		// 	for k := i; k < j; k++ {
+		// 		values = append(values, intermediate[k].Value)
+		// 	}
+		// 	output := reducef(intermediate[i].Key, values)
+
+		// 	// this is the correct format for each line of Reduce output.
+		// 	fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+		// 	i = j
+		// }
+	// }
+}
+
+func GetAvailableFilenameForMapTask() string {
+	args := GetAvailableMapInputArgs {}
+	reply := GetAvailableMapInputReply {}
+
+	call("Master.GetAvailableMapInput", &args, &reply)
 	fmt.Println(reply.Filename)
 
 	return reply.Filename
+}
+
+func GetNumberOfReduceTasks() int {
+	args := GetNumberOfReduceTasksArgs {}
+	reply := GetNumberOfReduceTasksReply {}
+	
+	call("Master.GetNumberOfReduceTasks", &args, &reply)
+
+	return reply.NumberOfReduceTasks
 }
 
 //

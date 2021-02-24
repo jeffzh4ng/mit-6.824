@@ -19,14 +19,21 @@ type UpdateMapTaskToFinishArgs struct {
 type UpdateMapTaskToFinishReply struct {
 }
 
-type GetAvailableFilenameArgs struct {
+type GetAvailableMapInputArgs struct {
 
 }
 
-type GetAvailableFilenameReply struct {
+type GetAvailableMapInputReply struct {
 	Filename string
 }
 
+type GetNumberOfReduceTasksArgs struct {
+
+}
+
+type GetNumberOfReduceTasksReply struct {
+	NumberOfReduceTasks int
+}
 
 
 // Cook up a unique-ish UNIX-domain socket name
