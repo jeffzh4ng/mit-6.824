@@ -23,10 +23,8 @@ type WorkQueue struct {
 }
 
 func (m *Master) CreateIntermediaryFile(args *CreateIntermediaryFileArgs, reply *CreateIntermediaryFileReply) error {
-	fmt.Println("creating intermediary file")
 	m.reduceWorkQueue.mu.Lock()
-	m.reduceWorkQueue.queue[args.Filename] = false
-	fmt.Println("reduceWorkQueue:", m.reduceWorkQueue.queue)
+		m.reduceWorkQueue.queue[args.Filename] = false
 	m.reduceWorkQueue.mu.Unlock()
 
 	return nil
@@ -34,15 +32,29 @@ func (m *Master) CreateIntermediaryFile(args *CreateIntermediaryFileArgs, reply 
 
 func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *UpdateMapTaskToFinishReply) error {
 	m.mapWorkQueue.mu.Lock()
-	defer m.mapWorkQueue.mu.Unlock()
 
 	delete(m.mapWorkQueue.queue, args.Filename)
 	if len(m.mapWorkQueue.queue) == 0 {
 		fmt.Println("all maps tasks done!", m.mapWorkQueue.queue)
 	}
 
+	m.mapWorkQueue.mu.Unlock()
+
 	return nil
 }
+
+func (m *Master) UpdateReduceTaskToFinish(args *UpdateReduceTaskToFinishArgs, reply *UpdateReduceTaskToFinishReply) error {
+	m.reduceWorkQueue.mu.Lock()
+	
+	delete(m.reduceWorkQueue.queue, args.Filename)
+	if len(m.reduceWorkQueue.queue) == 0 {
+		fmt.Println("all reduce tasks done!", m.reduceWorkQueue.queue)
+	}
+	m.reduceWorkQueue.mu.Unlock()
+
+	return nil
+}
+
 
 func (m *Master) GetNumberOfReduceTasks(args *GetNumberOfReduceTasksArgs, reply *GetNumberOfReduceTasksReply) error {
 	reply.NumberOfReduceTasks = m.numberOfReduceTasks
@@ -75,7 +87,7 @@ func (m *Master) GetAvailableReduceInput(args *GetAvailableReduceInputArgs, repl
 			return nil
 		}
 		// =====================================================================
-	// m.mapWorkQueue.mu.Unlock()
+	m.mapWorkQueue.mu.Unlock()
 
 	m.reduceWorkQueue.mu.Lock()
 		fmt.Println("reduceWorkQueue isnt empty!", m.reduceWorkQueue.queue)

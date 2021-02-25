@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -113,47 +114,50 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 func reduceTask(reducef func(string, []string) string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	fileNameForReduceTask := GetAvailableFilenameForReduceTask()	
-	fmt.Println("reduce-task: file ready for reducing:", fileNameForReduceTask)
 
-	// while availableIntermediateFilesToReduce {
-		// intermediate := thing we need from fs
+	for fileNameForReduceTask != "" {
+		fmt.Println("reduce-task: processing", fileNameForReduceTask)
+		intermediateKva := []KeyValue{}
+		intermediaryFile, _ := os.Open(fileNameForReduceTask)
 
-		// FS ==========================
-		//  dec := json.NewDecoder(file)
-		// for {
-		// 	var kv KeyValue
-		// 	if err := dec.Decode(&kv); err != nil {
-		// 	break
-		// 	}
-		// 	kva = append(kva, kv)
-		// }
+		dec := json.NewDecoder(intermediaryFile)
+		for {
+			var kv KeyValue
+			if err := dec.Decode(&kv); err != nil {
+			break
+			}
+			intermediateKva = append(intermediateKva, kv)
+		}
 
-		// oname := "mr-0-0"
-		// ofile, _ := os.Create(oname)
-		// fmt.Fprintf(ofile, "%v", intermediate)
+		sort.Sort(ByKey(intermediateKva))
 
-		//
-		// call Reduce on each distinct key in intermediate[],
+		oname := "mr-out-" + fileNameForReduceTask[len(fileNameForReduceTask)-1:]
+		ofile, _ := os.Create(oname)
+
+		// call Reduce on each distinct key in intermediateKva[],
 		// and print the result to mr-out-0.
-		//
-		// i := 0
-		// for i < len(intermediate) {
-		// 	j := i + 1
-		// 	for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
-		// 		j++
-		// 	}
-		// 	values := []string{}
-		// 	for k := i; k < j; k++ {
-		// 		values = append(values, intermediate[k].Value)
-		// 	}
-		// 	output := reducef(intermediate[i].Key, values)
+		
+		i := 0
+		for i < len(intermediateKva) {
+			j := i + 1
+			for j < len(intermediateKva) && intermediateKva[j].Key == intermediateKva[i].Key {
+				j++
+			}
+			values := []string{}
+			for k := i; k < j; k++ {
+				values = append(values, intermediateKva[k].Value)
+			}
+			output := reducef(intermediateKva[i].Key, values)
 
-		// 	// this is the correct format for each line of Reduce output.
-		// 	fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+			// this is the correct format for each line of Reduce output.
+			fmt.Fprintf(ofile, "%v %v\n", intermediateKva[i].Key, output)
 
-		// 	i = j
-		// }
-	// }
+			i = j
+		}
+
+		UpdateReduceTaskToFinish(fileNameForReduceTask)
+		fileNameForReduceTask = GetAvailableFilenameForReduceTask()	
+	}
 }
 
 func CreateIntermediaryFile(intermediaryFilename string) {
@@ -175,6 +179,15 @@ func UpdateMapTaskToFinish(finishedFilename string) {
 	return
 }
 
+func UpdateReduceTaskToFinish(finishedFilename string) {
+	args := UpdateReduceTaskToFinishArgs {
+		Filename: finishedFilename,
+	}
+	reply := UpdateReduceTaskToFinishReply {}
+
+	call("Master.UpdateReduceTaskToFinish", &args, &reply)
+}
+
 func GetAvailableFilenameForMapTask() string {
 	args := GetAvailableMapInputArgs {}
 	reply := GetAvailableMapInputReply {}
@@ -192,7 +205,7 @@ func GetAvailableFilenameForReduceTask() string {
 
 	for reply.Filename == "" {
 		fmt.Println("reduce-task: sleeping")
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 5)
 		call("Master.GetAvailableReduceInput", &args, &reply)
 	}
 

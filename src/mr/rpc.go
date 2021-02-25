@@ -27,6 +27,15 @@ type UpdateMapTaskToFinishReply struct {
 
 }
 
+type UpdateReduceTaskToFinishArgs struct {
+	Filename string
+}
+
+type UpdateReduceTaskToFinishReply struct {
+
+}
+
+
 type GetAvailableMapInputArgs struct {
 
 }
