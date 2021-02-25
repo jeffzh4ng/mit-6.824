@@ -30,9 +30,9 @@ func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *U
 			fmt.Println("all maps tasks done!", m.mapWorkQueue.queue)
 		}
 
-		// m.reduceWorkQueue.mu.Lock()
-		// 	m.reduceWorkQueue.queue[args.Filename] = false
-		// m.reduceWorkQueue.mu.Unlock()
+		m.reduceWorkQueue.mu.Lock()
+			m.reduceWorkQueue.queue[args.Filename] = false
+		m.reduceWorkQueue.mu.Unlock()
 	m.mapWorkQueue.mu.Unlock()
 
 	return nil
@@ -46,11 +46,28 @@ func (m *Master) GetNumberOfReduceTasks(args *GetNumberOfReduceTasksArgs, reply 
 func (m *Master) GetAvailableReduceInput(args *GetAvailableReduceInputArgs, reply *GetAvailableReduceInputReply) error {
 	// if map work queue is not empty, reduce tasks cannot start
 	m.mapWorkQueue.mu.Lock()
-	if len(m.mapWorkQueue.queue) != 0 {
-		fmt.Println("cannot start reduce tasks", len(m.mapWorkQueue.queue), m.mapWorkQueue.queue)
-		m.mapWorkQueue.mu.Unlock()
-		return nil
-	}
+		// the most hacky shit ever
+		// a workaround this weird golang concurrency bug that i have no time to investigate
+		// when the last map task is done and removes the file from the mapWorkQueue.queue,
+		// the map becomes some weird map with one element (map[:true] or map[:false])
+		// =====================================================================
+		keys := make([]string, 0, len(m.mapWorkQueue.queue))
+		values := make([]bool, 0, len(m.mapWorkQueue.queue))
+
+		for k, v := range m.mapWorkQueue.queue {
+			keys = append(keys, k)
+			values = append(values, v)
+		}
+		mapTasksDone := len(keys) == 1 && len(values) == 1 && (values[0] == true || values[0] == false)
+
+		if !mapTasksDone {
+			fmt.Println("cannot start reduce tasks")
+			fmt.Println(len(keys), keys, len(values), values)
+
+			m.mapWorkQueue.mu.Unlock()
+			return nil
+		}
+		// =====================================================================
 
 	m.reduceWorkQueue.mu.Lock()
 		// TODO: if there's no files, sleep for X seconds

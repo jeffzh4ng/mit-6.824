@@ -118,6 +118,16 @@ func reduceTask(reducef func(string, []string) string, wg *sync.WaitGroup) {
 	// while availableIntermediateFilesToReduce {
 		// intermediate := thing we need from fs
 
+		// FS ==========================
+		//  dec := json.NewDecoder(file)
+		// for {
+		// 	var kv KeyValue
+		// 	if err := dec.Decode(&kv); err != nil {
+		// 	break
+		// 	}
+		// 	kva = append(kva, kv)
+		// }
+
 		// oname := "mr-0-0"
 		// ofile, _ := os.Create(oname)
 		// fmt.Fprintf(ofile, "%v", intermediate)
