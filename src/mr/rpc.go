@@ -11,7 +11,14 @@ import (
 	"strconv"
 )
 
-// Add your RPC definitions here.
+type CreateIntermediaryFileArgs struct {
+	Filename string
+}
+
+type CreateIntermediaryFileReply struct {
+
+}
+
 type UpdateMapTaskToFinishArgs struct {
 	Filename string
 }

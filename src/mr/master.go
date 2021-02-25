@@ -22,18 +22,24 @@ type WorkQueue struct {
 	queue map[string]bool
 }
 
+func (m *Master) CreateIntermediaryFile(args *CreateIntermediaryFileArgs, reply *CreateIntermediaryFileReply) error {
+	fmt.Println("creating intermediary file")
+	m.reduceWorkQueue.mu.Lock()
+	m.reduceWorkQueue.queue[args.Filename] = false
+	fmt.Println("reduceWorkQueue:", m.reduceWorkQueue.queue)
+	m.reduceWorkQueue.mu.Unlock()
+
+	return nil
+}
+
 func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *UpdateMapTaskToFinishReply) error {
 	m.mapWorkQueue.mu.Lock()
-		delete(m.mapWorkQueue.queue, args.Filename)
-		if len(m.mapWorkQueue.queue) == 0 {
-			m.mapWorkQueue.queue = make(map[string]bool)
-			fmt.Println("all maps tasks done!", m.mapWorkQueue.queue)
-		}
+	defer m.mapWorkQueue.mu.Unlock()
 
-		m.reduceWorkQueue.mu.Lock()
-			m.reduceWorkQueue.queue[args.Filename] = false
-		m.reduceWorkQueue.mu.Unlock()
-	m.mapWorkQueue.mu.Unlock()
+	delete(m.mapWorkQueue.queue, args.Filename)
+	if len(m.mapWorkQueue.queue) == 0 {
+		fmt.Println("all maps tasks done!", m.mapWorkQueue.queue)
+	}
 
 	return nil
 }
@@ -53,27 +59,26 @@ func (m *Master) GetAvailableReduceInput(args *GetAvailableReduceInputArgs, repl
 		// =====================================================================
 		keys := make([]string, 0, len(m.mapWorkQueue.queue))
 		values := make([]bool, 0, len(m.mapWorkQueue.queue))
-
 		for k, v := range m.mapWorkQueue.queue {
 			keys = append(keys, k)
 			values = append(values, v)
 		}
+		
 		mapTasksDone := len(keys) == 1 && len(values) == 1 && (values[0] == true || values[0] == false)
 
 		if !mapTasksDone {
 			fmt.Println("cannot start reduce tasks")
 			fmt.Println(len(keys), keys, len(values), values)
+			fmt.Println("=============================")
 
 			m.mapWorkQueue.mu.Unlock()
 			return nil
 		}
 		// =====================================================================
+	// m.mapWorkQueue.mu.Unlock()
 
 	m.reduceWorkQueue.mu.Lock()
-		// TODO: if there's no files, sleep for X seconds
-		// do we need to unlock here?
 		fmt.Println("reduceWorkQueue isnt empty!", m.reduceWorkQueue.queue)
-
 		availableFileName := getNextAvailableFile(m.reduceWorkQueue)
 		m.reduceWorkQueue.queue[availableFileName] = true
 	m.reduceWorkQueue.mu.Unlock()

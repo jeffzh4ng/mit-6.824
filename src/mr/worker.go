@@ -57,12 +57,11 @@ func Worker(mapf func(string, string) []KeyValue,
 func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 	defer wg.Done()
 	
-	fmt.Println("mapTask: going to do an RPC call")
 	fileNameForMapTask := GetAvailableFilenameForMapTask()
 	NReduce := GetNumberOfReduceTasks()
 
 	for fileNameForMapTask != "" {
-		fmt.Println("processing", fileNameForMapTask)
+		fmt.Println("map-task: processing", fileNameForMapTask)
 
 		file, err := os.Open(fileNameForMapTask)
 		if err != nil {
@@ -78,17 +77,18 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 
 		for i := 0; i < len(kva); i++ {
 			reduceTaskNumber := ihash(kva[i].Key) % NReduce
-			oname := "mr-" /* + string(mapTaskNumber)*/ + strconv.Itoa(reduceTaskNumber)
+			intermediaryFilename := "mr-" /* + string(mapTaskNumber)*/ + strconv.Itoa(reduceTaskNumber)
 			
 			// TODO: use temp files
 			
 			var ofile *os.File
 			
-    		_, fileError := os.Stat(oname)
+    		_, fileError := os.Stat(intermediaryFilename)
     		if os.IsNotExist(fileError) {
-				ofile, _ = os.Create(oname)
+				ofile, _ = os.Create(intermediaryFilename)
+				CreateIntermediaryFile(intermediaryFilename)
 			} else {
-				ofile, err = os.OpenFile(oname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
+				ofile, err = os.OpenFile(intermediaryFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
 				
 				if err != nil {
 					fmt.Println(err)
@@ -113,7 +113,7 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 func reduceTask(reducef func(string, []string) string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	fileNameForReduceTask := GetAvailableFilenameForReduceTask()	
-	fmt.Println("reduceinput", fileNameForReduceTask)
+	fmt.Println("reduce-task: file ready for reducing:", fileNameForReduceTask)
 
 	// while availableIntermediateFilesToReduce {
 		// intermediate := thing we need from fs
@@ -156,13 +156,23 @@ func reduceTask(reducef func(string, []string) string, wg *sync.WaitGroup) {
 	// }
 }
 
-func UpdateMapTaskToFinish(filename string) {
+func CreateIntermediaryFile(intermediaryFilename string) {
+	args := CreateIntermediaryFileArgs {
+		Filename: intermediaryFilename,
+	}
+	reply := CreateIntermediaryFileReply {}
+
+	call("Master.CreateIntermediaryFile", &args, &reply)
+}
+
+func UpdateMapTaskToFinish(finishedFilename string) {
 	args := UpdateMapTaskToFinishArgs {
-		Filename: filename,
+		Filename: finishedFilename,
 	}
 	reply := UpdateMapTaskToFinishReply {}
 
 	call("Master.UpdateMapTaskToFinish", &args, &reply)
+	return
 }
 
 func GetAvailableFilenameForMapTask() string {
@@ -181,7 +191,7 @@ func GetAvailableFilenameForReduceTask() string {
 	call("Master.GetAvailableReduceInput", &args, &reply)
 
 	for reply.Filename == "" {
-		fmt.Println("sleeping")
+		fmt.Println("reduce-task: sleeping")
 		time.Sleep(time.Second * 3)
 		call("Master.GetAvailableReduceInput", &args, &reply)
 	}
