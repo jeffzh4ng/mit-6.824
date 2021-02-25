@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
 
 //
@@ -44,21 +45,19 @@ func ihash(key string) int {
 //
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-
-	// Your worker implementation here.
-
 	var wg sync.WaitGroup
 
-	wg.Add(1)
+	wg.Add(2)
 	go mapTask(mapf, &wg)
-	go reduceTask(reducef)
+	go reduceTask(reducef, &wg)
 
 	wg.Wait()
 }
 
 func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 	defer wg.Done()
-
+	
+	fmt.Println("mapTask: going to do an RPC call")
 	fileNameForMapTask := GetAvailableFilenameForMapTask()
 	NReduce := GetNumberOfReduceTasks()
 
@@ -111,9 +110,11 @@ func mapTask(mapf func(string, string) []KeyValue, wg *sync.WaitGroup) {
 	}
 }
 
-func reduceTask(reducef func(string, []string) string) {
-	// availableIntermediateFilesToReduce := RPCCallToMaster()
-	
+func reduceTask(reducef func(string, []string) string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	fileNameForReduceTask := GetAvailableFilenameForReduceTask()	
+	fmt.Println("reduceinput", fileNameForReduceTask)
+
 	// while availableIntermediateFilesToReduce {
 		// intermediate := thing we need from fs
 
@@ -159,6 +160,21 @@ func GetAvailableFilenameForMapTask() string {
 	reply := GetAvailableMapInputReply {}
 
 	call("Master.GetAvailableMapInput", &args, &reply)
+
+	return reply.Filename
+}
+
+func GetAvailableFilenameForReduceTask() string {
+	args := GetAvailableReduceInputArgs {}
+	reply := GetAvailableReduceInputReply {}
+
+	call("Master.GetAvailableReduceInput", &args, &reply)
+
+	for reply.Filename == "" {
+		fmt.Println("sleeping")
+		time.Sleep(time.Second * 3)
+		call("Master.GetAvailableReduceInput", &args, &reply)
+	}
 
 	return reply.Filename
 }

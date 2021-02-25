@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -12,7 +13,8 @@ import (
 
 type Master struct {
 	numberOfReduceTasks int
-	workQueue WorkQueue // TODO: do we need to capitalize and export?
+	mapWorkQueue WorkQueue
+	reduceWorkQueue WorkQueue
 }
 
 type WorkQueue struct {
@@ -20,14 +22,18 @@ type WorkQueue struct {
 	queue map[string]bool
 }
 
-// Your code here -- RPC handlers for the worker to call.
-// the RPC argument and reply types are defined in rpc.go.
-//
-
 func (m *Master) UpdateMapTaskToFinish(args *UpdateMapTaskToFinishArgs, reply *UpdateMapTaskToFinishReply) error {
-	m.workQueue.mu.Lock()
-		delete(m.workQueue.queue, args.Filename)
-	m.workQueue.mu.Unlock()
+	m.mapWorkQueue.mu.Lock()
+		delete(m.mapWorkQueue.queue, args.Filename)
+		if len(m.mapWorkQueue.queue) == 0 {
+			m.mapWorkQueue.queue = make(map[string]bool)
+			fmt.Println("all maps tasks done!", m.mapWorkQueue.queue)
+		}
+
+		// m.reduceWorkQueue.mu.Lock()
+		// 	m.reduceWorkQueue.queue[args.Filename] = false
+		// m.reduceWorkQueue.mu.Unlock()
+	m.mapWorkQueue.mu.Unlock()
 
 	return nil
 }
@@ -37,13 +43,37 @@ func (m *Master) GetNumberOfReduceTasks(args *GetNumberOfReduceTasksArgs, reply 
 	return nil
 }
 
-func (m *Master) GetAvailableMapInput(args *GetAvailableMapInputArgs, reply *GetAvailableMapInputReply) error {
-	m.workQueue.mu.Lock()
-		availableFileName := getNextAvailableFile(m.workQueue)
-		m.workQueue.queue[availableFileName] = true
-	m.workQueue.mu.Unlock()
+func (m *Master) GetAvailableReduceInput(args *GetAvailableReduceInputArgs, reply *GetAvailableReduceInputReply) error {
+	// if map work queue is not empty, reduce tasks cannot start
+	m.mapWorkQueue.mu.Lock()
+	if len(m.mapWorkQueue.queue) != 0 {
+		fmt.Println("cannot start reduce tasks", len(m.mapWorkQueue.queue), m.mapWorkQueue.queue)
+		m.mapWorkQueue.mu.Unlock()
+		return nil
+	}
 
-	go monitorFile(m.workQueue, availableFileName)
+	m.reduceWorkQueue.mu.Lock()
+		// TODO: if there's no files, sleep for X seconds
+		// do we need to unlock here?
+		fmt.Println("reduceWorkQueue isnt empty!", m.reduceWorkQueue.queue)
+
+		availableFileName := getNextAvailableFile(m.reduceWorkQueue)
+		m.reduceWorkQueue.queue[availableFileName] = true
+	m.reduceWorkQueue.mu.Unlock()
+
+	go monitorFile(m.reduceWorkQueue, availableFileName)
+
+	reply.Filename = availableFileName
+	return nil
+} 
+
+func (m *Master) GetAvailableMapInput(args *GetAvailableMapInputArgs, reply *GetAvailableMapInputReply) error {
+	m.mapWorkQueue.mu.Lock()
+		availableFileName := getNextAvailableFile(m.mapWorkQueue)
+		m.mapWorkQueue.queue[availableFileName] = true
+	m.mapWorkQueue.mu.Unlock()
+
+	go monitorFile(m.mapWorkQueue, availableFileName)
 
 	reply.Filename = availableFileName
 	return nil
@@ -125,18 +155,23 @@ func (m *Master) Done() bool {
 func MakeMaster(files []string, nReduce int) *Master {
 	m := Master{
 		numberOfReduceTasks: nReduce,
-		workQueue: WorkQueue{
+		mapWorkQueue: WorkQueue{
+			mu: sync.Mutex{},
+			queue: make(map[string]bool),
+		},
+		reduceWorkQueue: WorkQueue{
 			mu: sync.Mutex{},
 			queue: make(map[string]bool),
 		},
 	}
 
-	m.workQueue.mu.Lock()
+	// load mapWorkQueue with filenames
+	m.mapWorkQueue.mu.Lock()
 	for i := 0; i < len(files); i++ {
 		filename := files[i]
-		m.workQueue.queue[filename] = false
+		m.mapWorkQueue.queue[filename] = false
 	}
-	m.workQueue.mu.Unlock()
+	m.mapWorkQueue.mu.Unlock()
 
 	m.server()
 	return &m
