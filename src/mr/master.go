@@ -49,6 +49,7 @@ func (m *Master) UpdateReduceTaskToFinish(args *UpdateReduceTaskToFinishArgs, re
 	delete(m.reduceWorkQueue.queue, args.Filename)
 	if len(m.reduceWorkQueue.queue) == 0 {
 		fmt.Println("all reduce tasks done!", m.reduceWorkQueue.queue)
+		os.Exit(0)
 	}
 	m.reduceWorkQueue.mu.Unlock()
 
